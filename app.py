@@ -2,11 +2,8 @@ import streamlit as st
 import pandas as pd
 import random
 import time
-import json
-import io
-from datetime import datetime, timedelta
+from datetime import datetime
 from supabase import create_client, Client
-from PIL import Image, ImageDraw, ImageFont
 
 # 1. 앱 설정 및 테마
 st.set_page_config(page_title="N1 합격 챌린지", page_icon="🌸", layout="centered")
@@ -29,8 +26,8 @@ try:
     SUPABASE_URL = st.secrets["SUPABASE_URL"]
     SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
     SHEET_URL = st.secrets["SHEET_URL"]
-except:
-    st.error("⚠️ Streamlit Secrets 설정을 완료해주세요!")
+except Exception as e:
+    st.error(f"⚠️ Streamlit Secrets 설정 오류: {e}")
     st.stop()
 
 @st.cache_resource
@@ -39,48 +36,69 @@ def init_supabase():
 
 supabase = init_supabase()
 
-# 3. 데이터 및 세션 관리 함수
+# 3. 데이터 로드 및 세션 관리
 @st.cache_data(ttl=60)
 def load_vocab():
-    df = pd.read_csv(SHEET_URL)
-    df.columns = df.columns.str.strip()
-    return df
+    try:
+        df = pd.read_csv(SHEET_URL)
+        df.columns = df.columns.str.strip()
+        return df
+    except:
+        return pd.DataFrame(columns=['단어', '히라가나', '한국어발음', '뜻'])
 
 def get_user():
     try:
+        # 현재 세션 가져오기
         res = supabase.auth.get_session()
         return res.user if res else None
-    except: return None
+    except:
+        return None
 
-# 세션 상태 초기화
-if 'vocab_data' not in st.session_state: st.session_state.vocab_data = load_vocab()
+# 초기 데이터 로드
+if 'vocab_data' not in st.session_state:
+    st.session_state.vocab_data = load_vocab()
+
+# 변수 초기화 (방어 로직 추가)
 if 'mastered_words' not in st.session_state: st.session_state.mastered_words = []
 if 'total_seconds' not in st.session_state: st.session_state.total_seconds = 0
 if 'start_time' not in st.session_state: st.session_state.start_time = time.time()
 if 'show_answer' not in st.session_state: st.session_state.show_answer = False
-if 'current_idx' not in st.session_state: st.session_state.current_idx = random.randint(0, len(st.session_state.vocab_data)-1)
+
+# 단어가 하나도 없을 경우 대비
+if len(st.session_state.vocab_data) > 0:
+    if 'current_idx' not in st.session_state:
+        st.session_state.current_idx = random.randint(0, len(st.session_state.vocab_data)-1)
+else:
+    st.warning("구글 시트에서 데이터를 불러오지 못했습니다. CSV 주소를 확인해주세요!")
+    st.stop()
 
 user = get_user()
 
-# 4. 사이드바 구성 (로그인 & 랭킹 & 인증샷)
+# 4. 사이드바 구성
 with st.sidebar:
     if not user:
         st.header("🔐 로그인")
         if st.button("구글 로그인으로 시작하기", use_container_width=True):
-            # [수정] 본인의 앱 주소 입력
+            # ⭐ 중요: 여기에 본인의 실제 스트림릿 주소를 꼭 넣으세요!
+            # 예: "https://your-app.streamlit.app"
+            MY_APP_URL = "https://n1-voca-quiz-3uapphy3u4brvdpfsgl5snw.streamlit.app" 
+            
             res = supabase.auth.sign_in_with_oauth({
                 "provider": "google",
-                "options": {"redirect_to": "https://n1-voca-quiz-3uapphy3u4brvdpfsgl5snw.streamlit.app"}
+                "options": {"redirect_to": MY_APP_URL}
             })
+            # 자바스크립트를 이용한 강제 리다이렉트
             st.markdown(f'<meta http-equiv="refresh" content="0;url={res.url}">', unsafe_allow_html=True)
     else:
         st.header(f"👋 {user.email.split('@')[0]}님")
         
-        # 데이터 동기화
-        res = supabase.table("study_progress").select("*").eq("username", user.email).execute()
-        if res.data:
-            st.session_state.mastered_words = res.data[0].get('mastered_words', [])
-            st.session_state.total_seconds = res.data[0].get('total_seconds', 0)
+        # Supabase에서 데이터 불러오기
+        try:
+            res = supabase.table("study_progress").select("*").eq("username", user.email).execute()
+            if res.data:
+                st.session_state.mastered_words = res.data[0].get('mastered_words', [])
+                st.session_state.total_seconds = res.data[0].get('total_seconds', 0)
+        except: pass
 
         if st.button("로그아웃"):
             supabase.auth.sign_out()
@@ -88,26 +106,25 @@ with st.sidebar:
 
         st.write("---")
         if st.checkbox("🏆 공부왕 랭킹 보기"):
-            rank_res = supabase.table("study_progress").select("username", "total_seconds").order("total_seconds", desc=True).limit(5).execute()
-            for i, r in enumerate(rank_res.data):
-                st.write(f"**{i+1}위** {r['username'].split('@')[0]} ({int(r['total_seconds']//60)}분)")
+            try:
+                rank_res = supabase.table("study_progress").select("username", "total_seconds").order("total_seconds", desc=True).limit(5).execute()
+                for i, r in enumerate(rank_res.data):
+                    st.write(f"**{i+1}위** {r['username'].split('@')[0]} ({int(r['total_seconds']//60)}분)")
+            except: st.write("랭킹을 불러올 수 없습니다.")
 
 # 5. 메인 앱 화면
 if user:
-    # 실시간 공부 시간 계산
     session_duration = time.time() - st.session_state.start_time
     current_total_time = st.session_state.total_seconds + session_duration
     
     st.markdown("<h3 style='text-align: center; color: #FF8E8E;'>🌸 N1 합격 챌린지 🌸</h3>", unsafe_allow_html=True)
     st.markdown(f"<div class='timer-box'>⏰ 누적 공부 시간: {int(current_total_time // 60)}분 {int(current_total_time % 60)}초</div>", unsafe_allow_html=True)
 
-    # 진행도 표시
     total_count = len(st.session_state.vocab_data)
     mastered_count = len(set(st.session_state.mastered_words))
     st.progress(mastered_count / total_count if total_count > 0 else 0)
     st.write(f"🍎 정복한 단어: {mastered_count} / {total_count}")
 
-    # 단어 카드
     word = st.session_state.vocab_data.iloc[st.session_state.current_idx]
     st.markdown(f"<div class='word-card'><p style='color:#FFA4A4;'>이 단어는?</p><div class='japanese-word'>{word['단어']}</div></div>", unsafe_allow_html=True)
 
@@ -122,13 +139,17 @@ if user:
             if st.button("🌈 완벽해! (저장)", use_container_width=True):
                 if st.session_state.current_idx not in st.session_state.mastered_words:
                     st.session_state.mastered_words.append(int(st.session_state.current_idx))
-                # Supabase 저장
-                supabase.table("study_progress").upsert({
-                    "username": user.email,
-                    "mastered_words": list(set(st.session_state.mastered_words)),
-                    "total_seconds": current_total_time,
-                    "last_seen": datetime.now().isoformat()
-                }).execute()
+                
+                # Supabase 저장 (오류 무시 로직 포함)
+                try:
+                    supabase.table("study_progress").upsert({
+                        "username": user.email,
+                        "mastered_words": list(set(st.session_state.mastered_words)),
+                        "total_seconds": current_total_time,
+                        "last_seen": datetime.now().isoformat()
+                    }).execute()
+                except: pass
+
                 st.session_state.current_idx = random.randint(0, total_count-1)
                 st.session_state.show_answer = False
                 st.rerun()
