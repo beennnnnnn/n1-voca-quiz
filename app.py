@@ -46,6 +46,19 @@ def load_vocab():
     except:
         return pd.DataFrame(columns=['단어', '히라가나', '한국어발음', '뜻'])
 
+# --- [추가] 구글이 준 '로그인 열쇠' 확인 코드 ---
+# URL에 'code'라는 열쇠가 들어왔는지 확인합니다.
+if "code" in st.query_params:
+    try:
+        # 그 열쇠를 수파베이스에게 전달해서 '진짜 세션'으로 바꿉니다.
+        auth_code = st.query_params.get("code")
+        supabase.auth.exchange_code_for_session({"auth_code": auth_code})
+        # 주소창을 깔끔하게 정리하고 앱을 다시 실행합니다.
+        st.query_params.clear()
+        st.rerun()
+    except Exception as e:
+        st.error(f"로그인 처리 중 오류가 발생했습니다: {e}")
+        
 def get_user():
     try:
         # 현재 세션 가져오기
