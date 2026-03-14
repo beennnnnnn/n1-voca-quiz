@@ -74,31 +74,28 @@ else:
 
 user = get_user()
 
-# 4. 사이드바 구성
+# --- 4. 사이드바 구성 (로그인 부분만 수정) ---
 with st.sidebar:
     if not user:
         st.header("🔐 로그인")
-        if st.button("구글 로그인으로 시작하기", use_container_width=True):
-            # ⭐ 중요: 여기에 본인의 실제 스트림릿 주소를 꼭 넣으세요!
-            # 예: "https://your-app.streamlit.app"
-            MY_APP_URL = "https://n1-voca-quiz-3uapphy3u4brvdpfsgl5snw.streamlit.app" 
-            
+        
+        # 1. 수파베이스로부터 구글 로그인 주소를 먼저 받아옵니다.
+        # [주의] MY_APP_URL은 반드시 본인의 실제 스트림릿 주소여야 합니다!
+        MY_APP_URL = "https://본인의앱이름.streamlit.app" 
+        
+        try:
             res = supabase.auth.sign_in_with_oauth({
                 "provider": "google",
                 "options": {"redirect_to": MY_APP_URL}
             })
-            # 자바스크립트를 이용한 강제 리다이렉트
-            st.markdown(f'<meta http-equiv="refresh" content="0;url={res.url}">', unsafe_allow_html=True)
-    else:
-        st.header(f"👋 {user.email.split('@')[0]}님")
-        
-        # Supabase에서 데이터 불러오기
-        try:
-            res = supabase.table("study_progress").select("*").eq("username", user.email).execute()
-            if res.data:
-                st.session_state.mastered_words = res.data[0].get('mastered_words', [])
-                st.session_state.total_seconds = res.data[0].get('total_seconds', 0)
-        except: pass
+            
+            # 2. 메타 태그 대신, 사용자가 직접 클릭하는 '링크 버튼'을 만듭니다.
+            # 이 버튼은 브라우저의 '전체 창'을 새 주소로 옮겨줍니다.
+            st.link_button("🚀 구글 로그인 시작하기", res.url, use_container_width=True)
+            st.info("위 버튼을 누르면 구글 로그인 화면으로 안전하게 이동합니다.")
+            
+        except Exception as e:
+            st.error(f"로그인 주소를 가져오지 못했습니다: {e}")
 
         if st.button("로그아웃"):
             supabase.auth.sign_out()
