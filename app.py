@@ -81,7 +81,7 @@ with st.sidebar:
         if st.button("구글 로그인으로 시작하기", use_container_width=True):
             # ⭐ 중요: 여기에 본인의 실제 스트림릿 주소를 꼭 넣으세요!
             # 예: "https://your-app.streamlit.app"
-            MY_APP_URL = "https://n1-voca-quiz-3uapphy3u4brvdpfsgl5snw.streamlit.app" 
+            MY_APP_URL = "https://n1-voca-quiz-3uapphy3u4brvdpfsgl5snw.streamlit.app/" 
             
             res = supabase.auth.sign_in_with_oauth({
                 "provider": "google",
