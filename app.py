@@ -10,7 +10,7 @@ st.title("🔥 나만의 세법 & N1 단어 박살내기")
 # 🚨 [중요] 여기에 본인의 구글 시트 URL을 넣으세요!
 # 반드시 링크 끝부분이 export?format=csv 로 끝나야 합니다.
 # ---------------------------------------------------------
-SHEET_URL = "https://docs.google.com/spreadsheets/d/여기에_본인의_시트ID를_넣으세요/export?format=csv"
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1g6ww8VWi7PytD5oH6iGMcUfGc0P-0uGeC4CKGEEGbU0/export?format=csv"
 
 # 2. 구글 시트 데이터 로드 (캐싱을 통해 속도 향상)
 @st.cache_data(ttl=60) # 60초마다 구글 시트 최신화 (단어 추가 후 1분 뒤 반영됨)
