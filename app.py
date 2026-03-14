@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 from supabase import create_client, Client
 
-# 1. 앱 설정 및 테마
+# 1. 앱 설정 및 디자인
 st.set_page_config(page_title="N1 합격 챌린지", page_icon="🌸", layout="centered")
 
 st.markdown("""
@@ -21,13 +21,13 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 2. 서비스 연결 (Secrets 로드)
+# 2. 서비스 연결 (Secrets)
 try:
     SUPABASE_URL = st.secrets["SUPABASE_URL"]
     SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
     SHEET_URL = st.secrets["SHEET_URL"]
 except Exception as e:
-    st.error(f"⚠️ Streamlit Secrets 설정 오류: {e}")
+    st.error("⚠️ Streamlit Secrets 설정을 확인해주세요!")
     st.stop()
 
 @st.cache_resource
@@ -36,7 +36,7 @@ def init_supabase():
 
 supabase = init_supabase()
 
-# 3. 데이터 로드 및 세션 관리
+# 3. 데이터 로드 함수
 @st.cache_data(ttl=60)
 def load_vocab():
     try:
@@ -46,72 +46,73 @@ def load_vocab():
     except:
         return pd.DataFrame(columns=['단어', '히라가나', '한국어발음', '뜻'])
 
-# --- [추가] 구글이 준 '로그인 열쇠' 확인 코드 ---
-# URL에 'code'라는 열쇠가 들어왔는지 확인합니다.
+# --- 4. 로그인 처리 핵심 로직 (매우 중요 ⭐) ---
+
+# URL에 포함된 로그인 열쇠(code)를 세션으로 교환합니다.
 if "code" in st.query_params:
     try:
-        # 그 열쇠를 수파베이스에게 전달해서 '진짜 세션'으로 바꿉니다.
         auth_code = st.query_params.get("code")
         supabase.auth.exchange_code_for_session({"auth_code": auth_code})
-        # 주소창을 깔끔하게 정리하고 앱을 다시 실행합니다.
+        # 처리가 끝나면 주소창을 비우고 앱을 새로고침합니다.
         st.query_params.clear()
         st.rerun()
     except Exception as e:
-        st.error(f"로그인 처리 중 오류가 발생했습니다: {e}")
-        
+        # 이미 처리된 코드일 경우 에러가 날 수 있으므로 무시하거나 로그아웃 처리
+        st.query_params.clear()
+        st.rerun()
+
 def get_user():
     try:
-        # 현재 세션 가져오기
         res = supabase.auth.get_session()
         return res.user if res else None
     except:
         return None
 
-# 초기 데이터 로드
-if 'vocab_data' not in st.session_state:
-    st.session_state.vocab_data = load_vocab()
-
-# 변수 초기화 (방어 로직 추가)
+# 세션 상태 초기화
+if 'vocab_data' not in st.session_state: st.session_state.vocab_data = load_vocab()
 if 'mastered_words' not in st.session_state: st.session_state.mastered_words = []
 if 'total_seconds' not in st.session_state: st.session_state.total_seconds = 0
 if 'start_time' not in st.session_state: st.session_state.start_time = time.time()
 if 'show_answer' not in st.session_state: st.session_state.show_answer = False
 
-# 단어가 하나도 없을 경우 대비
+user = get_user()
+
 if len(st.session_state.vocab_data) > 0:
     if 'current_idx' not in st.session_state:
         st.session_state.current_idx = random.randint(0, len(st.session_state.vocab_data)-1)
-else:
-    st.warning("구글 시트에서 데이터를 불러오지 못했습니다. CSV 주소를 확인해주세요!")
-    st.stop()
 
-user = get_user()
-
-# --- 4. 사이드바 구성 (로그인 부분만 수정) ---
+# --- 5. 사이드바 (로그인 관리) ---
 with st.sidebar:
     if not user:
         st.header("🔐 로그인")
         
-        # 1. 수파베이스로부터 구글 로그인 주소를 먼저 받아옵니다.
-        # [주의] MY_APP_URL은 반드시 본인의 실제 스트림릿 주소여야 합니다!
+        # ⭐ [수정 필요] 본인의 실제 스트림릿 앱 주소를 입력하세요.
         MY_APP_URL = "https://n1-voca-quiz-3uapphy3u4brvdpfsgl5snw.streamlit.app" 
         
-        try:
+        # 보안 키 불일치(code challenge) 방지를 위해 URL을 세션에 고정
+        if 'google_login_url' not in st.session_state:
             res = supabase.auth.sign_in_with_oauth({
                 "provider": "google",
                 "options": {"redirect_to": MY_APP_URL}
             })
+            st.session_state.google_login_url = res.url
             
-            # 2. 메타 태그 대신, 사용자가 직접 클릭하는 '링크 버튼'을 만듭니다.
-            # 이 버튼은 브라우저의 '전체 창'을 새 주소로 옮겨줍니다.
-            st.link_button("🚀 구글 로그인 시작하기", res.url, use_container_width=True)
-            st.info("위 버튼을 누르면 구글 로그인 화면으로 안전하게 이동합니다.")
-            
-        except Exception as e:
-            st.error(f"로그인 주소를 가져오지 못했습니다: {e}")
+        st.link_button("🚀 구글 로그인 시작하기", st.session_state.google_login_url, use_container_width=True)
+        st.info("로그인 후 자동으로 단어장이 나타납니다.")
+    else:
+        st.header(f"👋 {user.email.split('@')[0]}님")
+        
+        # Supabase 데이터 동기화
+        try:
+            res = supabase.table("study_progress").select("*").eq("username", user.email).execute()
+            if res.data:
+                st.session_state.mastered_words = res.data[0].get('mastered_words', [])
+                st.session_state.total_seconds = res.data[0].get('total_seconds', 0)
+        except: pass
 
         if st.button("로그아웃"):
             supabase.auth.sign_out()
+            if 'google_login_url' in st.session_state: del st.session_state.google_login_url
             st.rerun()
 
         st.write("---")
@@ -120,9 +121,9 @@ with st.sidebar:
                 rank_res = supabase.table("study_progress").select("username", "total_seconds").order("total_seconds", desc=True).limit(5).execute()
                 for i, r in enumerate(rank_res.data):
                     st.write(f"**{i+1}위** {r['username'].split('@')[0]} ({int(r['total_seconds']//60)}분)")
-            except: st.write("랭킹을 불러올 수 없습니다.")
+            except: st.write("아직 랭킹 데이터가 없습니다.")
 
-# 5. 메인 앱 화면
+# --- 6. 메인 화면 ---
 if user:
     session_duration = time.time() - st.session_state.start_time
     current_total_time = st.session_state.total_seconds + session_duration
@@ -149,8 +150,6 @@ if user:
             if st.button("🌈 완벽해! (저장)", use_container_width=True):
                 if st.session_state.current_idx not in st.session_state.mastered_words:
                     st.session_state.mastered_words.append(int(st.session_state.current_idx))
-                
-                # Supabase 저장 (오류 무시 로직 포함)
                 try:
                     supabase.table("study_progress").upsert({
                         "username": user.email,
@@ -159,7 +158,6 @@ if user:
                         "last_seen": datetime.now().isoformat()
                     }).execute()
                 except: pass
-
                 st.session_state.current_idx = random.randint(0, total_count-1)
                 st.session_state.show_answer = False
                 st.rerun()
