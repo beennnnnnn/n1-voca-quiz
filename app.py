@@ -81,7 +81,7 @@ with st.sidebar:
         
         # 1. 수파베이스로부터 구글 로그인 주소를 먼저 받아옵니다.
         # [주의] MY_APP_URL은 반드시 본인의 실제 스트림릿 주소여야 합니다!
-        MY_APP_URL = "https://본인의앱이름.streamlit.app" 
+        MY_APP_URL = "https://n1-voca-quiz-3uapphy3u4brvdpfsgl5snw.streamlit.app" 
         
         try:
             res = supabase.auth.sign_in_with_oauth({
